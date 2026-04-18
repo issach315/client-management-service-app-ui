@@ -1,0 +1,145 @@
+// src/components/clients/EditClientPage.jsx
+import React, { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { getClientById, updateClient } from "@/services/clientService";
+import {
+  Box, Card, CardContent, Typography, Button,
+  CircularProgress, Alert, Snackbar, Stack,
+} from "@mui/material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import FormGenerator from "@/components/FormGenerator";
+
+const CLIENT_FORM_FIELDS = [
+  { type: "text",   name: "clientName",    label: "Client Name",    xs: 12, sm: 6, required: true },
+  { type: "text",   name: "contactPerson", label: "Contact Person", xs: 12, sm: 6 },
+  { type: "email",  name: "email",         label: "Email",          xs: 12, sm: 6, required: true },
+  { type: "text",   name: "phoneNumber",   label: "Phone Number",   xs: 12, sm: 6, required: true },
+  {
+    type: "select", name: "industry", label: "Industry", xs: 12, sm: 6,
+    options: [
+      { label: "IT",            value: "IT" },
+      { label: "Finance",       value: "Finance" },
+      { label: "Healthcare",    value: "Healthcare" },
+      { label: "Retail",        value: "Retail" },
+      { label: "Manufacturing", value: "Manufacturing" },
+      { label: "Other",         value: "Other" },
+    ],
+  },
+  {
+    type: "select", name: "status", label: "Status", xs: 12, sm: 6, required: true,
+    options: [
+      { label: "ACTIVE",   value: "ACTIVE" },
+      { label: "INACTIVE", value: "INACTIVE" },
+    ],
+  },
+  { type: "text", name: "location", label: "Location", xs: 12 },
+];
+
+const EditClientPage = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const [formData, setFormData] = useState({
+    clientName: "", contactPerson: "", email: "",
+    phoneNumber: "", industry: "", status: "ACTIVE", location: "",
+  });
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+
+  // Fetch existing data (GET by ID)
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        setLoading(true);
+        const response = await getClientById(id);
+        const client   = response.data?.data ?? response.data;
+        setFormData({
+          clientName:    client.clientName    || "",
+          contactPerson: client.contactPerson || "",
+          email:         client.email         || "",
+          phoneNumber:   client.phoneNumber   || "",
+          industry:      client.industry      || "",
+          status:        client.status        || "ACTIVE",
+          location:      client.location      || "",
+        });
+      } catch (err) {
+        setError(err.response?.data?.message || "Failed to load client");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+  }, [id]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+const handleSubmit = async (e) => {
+  e?.preventDefault();
+  setSaving(true);
+
+  try {
+    await updateClient(id, formData);
+
+    setSnackbar({
+      open: true,
+      message: "Client updated successfully!",
+      severity: "success",
+    });
+
+    navigate("/clients");
+
+  } catch (err) {
+    setSnackbar({
+      open: true,
+      message: err.response?.data?.message || "Error updating client",
+      severity: "error",
+    });
+  } finally {
+    setSaving(false);
+  }
+};
+
+  if (loading) return <Box display="flex" justifyContent="center" p={6}><CircularProgress /></Box>;
+  if (error)   return <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>;
+
+  return (
+    <Box p={3}>
+      <Stack direction="row" spacing={1} mb={2} alignItems="center">
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} size="small">
+          Back
+        </Button>
+        <Typography variant="h6" fontWeight={600}>Edit Client</Typography>
+      </Stack>
+
+      <Card variant="outlined">
+        <CardContent sx={{ p: 3 }}>
+          <FormGenerator
+            fields={CLIENT_FORM_FIELDS}
+            values={formData}
+            onChange={handleChange}
+            onSubmit={handleSubmit}
+            submitText={saving ? "Saving..." : "Update Client"}
+          />
+        </CardContent>
+      </Card>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert severity={snackbar.severity} variant="filled" sx={{ width: "100%" }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+};
+
+export default EditClientPage;
