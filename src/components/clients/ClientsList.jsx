@@ -332,6 +332,7 @@ const ClientsList = () => {
           values={addForm}
           onChange={handleAddFormChange}
           hideSubmit
+          showSubmit={false} 
         />
       </Dialog>
 

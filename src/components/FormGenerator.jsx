@@ -19,10 +19,10 @@ const FormGenerator = ({
   onChange,
   onSubmit,
   submitText = "Submit",
+  showSubmit = true,
 }) => {
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-
     onChange({
       target: {
         name,
@@ -137,11 +137,13 @@ const FormGenerator = ({
       <Grid container spacing={2}>
         {fields.map((field) => renderField(field))}
 
-        <Grid item xs={12}>
-          <Button type="submit" variant="contained" fullWidth>
-            {submitText}
-          </Button>
-        </Grid>
+        {showSubmit && (
+          <Grid item xs={12}>
+            <Button type="submit" variant="contained" fullWidth>
+              {submitText}
+            </Button>
+          </Grid>
+        )}
       </Grid>
     </form>
   );
