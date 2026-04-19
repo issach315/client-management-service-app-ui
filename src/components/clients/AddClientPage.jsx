@@ -1,6 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createClient } from "@/services";
+import { useDispatch, useSelector } from "react-redux";
+import { addClient, clearMutateStatus } from "../../store/slices/clientsSlice";
+import {
+  selectMutating,
+  selectMutateError,
+  selectLastMutateSuccess,
+} from "../../store/selectors/clientsSelectors";
 import {
   Box,
   Card,
@@ -12,7 +18,7 @@ import {
   Stack,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import FormGenerator from "@/components/FormGenerator";
+import {FormGenerator} from "@/components";
 
 const CLIENT_FORM_FIELDS = [
   {
@@ -88,44 +94,46 @@ const EMPTY = {
 
 const AddClientPage = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  const mutating = useSelector(selectMutating);
+  const mutateError = useSelector(selectMutateError);
+  const lastMutateSuccess = useSelector(selectLastMutateSuccess);
 
   const [formData, setFormData] = useState(EMPTY);
-  const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "success",
   });
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e) => {
-    e?.preventDefault();
-    setSaving(true);
-    try {
-      const response = await createClient(formData);
-      const newId = response.data?.data?.id ?? response.data?.id;
+  useEffect(() => {
+    if (lastMutateSuccess === "added") {
       setSnackbar({
         open: true,
         message: "Client created successfully!",
         severity: "success",
       });
-      setTimeout(
-        () => navigate(newId ? `../${newId}` : "..", { relative: "path" }),
-        1200,
-      );
-    } catch (err) {
-      setSnackbar({
-        open: true,
-        message: err.response?.data?.message || "Error creating client",
-        severity: "error",
-      });
-    } finally {
-      setSaving(false);
+      dispatch(clearMutateStatus());
+      setTimeout(() => navigate(".."), 1200);
     }
+  }, [lastMutateSuccess]);
+
+  useEffect(() => {
+    if (mutateError) {
+      setSnackbar({ open: true, message: mutateError, severity: "error" });
+      dispatch(clearMutateStatus());
+    }
+  }, [mutateError]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e?.preventDefault();
+    dispatch(addClient(formData));
   };
 
   return (
@@ -150,7 +158,7 @@ const AddClientPage = () => {
             values={formData}
             onChange={handleChange}
             onSubmit={handleSubmit}
-            submitText={saving ? "Creating..." : "Create Client"}
+            submitText={mutating ? "Creating..." : "Create Client"}
           />
         </CardContent>
       </Card>

@@ -1,7 +1,15 @@
-// src/components/clients/ClientDetailPage.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getClientById } from "@/services";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  fetchClientById,
+  clearSelectedClient,
+} from "../../store/slices/clientsSlice";
+import {
+  selectSelectedClient,
+  selectDetailLoading,
+  selectDetailError,
+} from "../../store/selectors/clientsSelectors";
 import {
   Box,
   Card,
@@ -37,26 +45,18 @@ const DetailRow = ({ label, value }) => (
 const ClientDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
-  const [client, setClient] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const client = useSelector(selectSelectedClient);
+  const loading = useSelector(selectDetailLoading);
+  const error = useSelector(selectDetailError);
 
   useEffect(() => {
-    const fetch = async () => {
-      try {
-        setLoading(true);
-        const response = await getClientById(id);
-        // Handles both { data: client } and { data: { data: client } } shapes
-        setClient(response.data?.data ?? response.data);
-      } catch (err) {
-        setError(err.response?.data?.message || "Failed to load client");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetch();
-  }, [id]);
+    dispatch(fetchClientById(id));
+    return () => {
+      dispatch(clearSelectedClient());
+    }; // cleanup on unmount
+  }, [id, dispatch]);
 
   if (loading)
     return (
@@ -99,7 +99,6 @@ const ClientDetailPage = () => {
 
       <Card variant="outlined">
         <CardContent sx={{ p: 3 }}>
-          {/* Header */}
           <Box
             display="flex"
             alignItems="center"
@@ -120,9 +119,7 @@ const ClientDetailPage = () => {
               sx={{ fontWeight: 600 }}
             />
           </Box>
-
           <Divider sx={{ my: 2 }} />
-
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6}>
               <DetailRow label="Client ID" value={`#${client.id}`} />

@@ -1,119 +1,193 @@
-// src/components/clients/EditClientPage.jsx
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getClientById, updateClient } from "@/services/clientService";
+import { useDispatch, useSelector } from "react-redux";
 import {
-  Box, Card, CardContent, Typography, Button,
-  CircularProgress, Alert, Snackbar, Stack,
+  fetchClientById,
+  editClient,
+  clearSelectedClient,
+  clearMutateStatus,
+} from "../../store/slices/clientsSlice";
+import {
+  selectSelectedClient,
+  selectDetailLoading,
+  selectDetailError,
+  selectMutating,
+  selectMutateError,
+  selectLastMutateSuccess,
+} from "../../store/selectors/clientsSelectors";
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  CircularProgress,
+  Alert,
+  Snackbar,
+  Stack,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import FormGenerator from "@/components/FormGenerator";
+import {FormGenerator} from "@/components";
 
 const CLIENT_FORM_FIELDS = [
-  { type: "text",   name: "clientName",    label: "Client Name",    xs: 12, sm: 6, required: true },
-  { type: "text",   name: "contactPerson", label: "Contact Person", xs: 12, sm: 6 },
-  { type: "email",  name: "email",         label: "Email",          xs: 12, sm: 6, required: true },
-  { type: "text",   name: "phoneNumber",   label: "Phone Number",   xs: 12, sm: 6, required: true },
   {
-    type: "select", name: "industry", label: "Industry", xs: 12, sm: 6,
+    type: "text",
+    name: "clientName",
+    label: "Client Name",
+    xs: 12,
+    sm: 6,
+    required: true,
+  },
+  {
+    type: "text",
+    name: "contactPerson",
+    label: "Contact Person",
+    xs: 12,
+    sm: 6,
+  },
+  {
+    type: "email",
+    name: "email",
+    label: "Email",
+    xs: 12,
+    sm: 6,
+    required: true,
+  },
+  {
+    type: "text",
+    name: "phoneNumber",
+    label: "Phone Number",
+    xs: 12,
+    sm: 6,
+    required: true,
+  },
+  {
+    type: "select",
+    name: "industry",
+    label: "Industry",
+    xs: 12,
+    sm: 6,
     options: [
-      { label: "IT",            value: "IT" },
-      { label: "Finance",       value: "Finance" },
-      { label: "Healthcare",    value: "Healthcare" },
-      { label: "Retail",        value: "Retail" },
+      { label: "IT", value: "IT" },
+      { label: "Finance", value: "Finance" },
+      { label: "Healthcare", value: "Healthcare" },
+      { label: "Retail", value: "Retail" },
       { label: "Manufacturing", value: "Manufacturing" },
-      { label: "Other",         value: "Other" },
+      { label: "Other", value: "Other" },
     ],
   },
   {
-    type: "select", name: "status", label: "Status", xs: 12, sm: 6, required: true,
+    type: "select",
+    name: "status",
+    label: "Status",
+    xs: 12,
+    sm: 6,
+    required: true,
     options: [
-      { label: "ACTIVE",   value: "ACTIVE" },
+      { label: "ACTIVE", value: "ACTIVE" },
       { label: "INACTIVE", value: "INACTIVE" },
     ],
   },
   { type: "text", name: "location", label: "Location", xs: 12 },
 ];
 
+const toFormData = (client) => ({
+  clientName: client?.clientName || "",
+  contactPerson: client?.contactPerson || "",
+  email: client?.email || "",
+  phoneNumber: client?.phoneNumber || "",
+  industry: client?.industry || "",
+  status: client?.status || "ACTIVE",
+  location: client?.location || "",
+});
+
 const EditClientPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
-  const [formData, setFormData] = useState({
-    clientName: "", contactPerson: "", email: "",
-    phoneNumber: "", industry: "", status: "ACTIVE", location: "",
+  const client = useSelector(selectSelectedClient);
+  const detailLoading = useSelector(selectDetailLoading);
+  const detailError = useSelector(selectDetailError);
+  const mutating = useSelector(selectMutating);
+  const mutateError = useSelector(selectMutateError);
+  const lastMutateSuccess = useSelector(selectLastMutateSuccess);
+
+  const [formData, setFormData] = useState(toFormData(null));
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
   });
-  const [loading,  setLoading]  = useState(true);
-  const [saving,   setSaving]   = useState(false);
-  const [error,    setError]    = useState(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
 
-  // Fetch existing data (GET by ID)
   useEffect(() => {
-    const fetch = async () => {
-      try {
-        setLoading(true);
-        const response = await getClientById(id);
-        const client   = response.data?.data ?? response.data;
-        setFormData({
-          clientName:    client.clientName    || "",
-          contactPerson: client.contactPerson || "",
-          email:         client.email         || "",
-          phoneNumber:   client.phoneNumber   || "",
-          industry:      client.industry      || "",
-          status:        client.status        || "ACTIVE",
-          location:      client.location      || "",
-        });
-      } catch (err) {
-        setError(err.response?.data?.message || "Failed to load client");
-      } finally {
-        setLoading(false);
-      }
+    dispatch(fetchClientById(id));
+    return () => {
+      dispatch(clearSelectedClient());
     };
-    fetch();
-  }, [id]);
+  }, [id, dispatch]);
+
+  // Populate form once client is loaded
+  useEffect(() => {
+    if (client) setFormData(toFormData(client));
+  }, [client]);
+
+  // React to save result
+  useEffect(() => {
+    if (lastMutateSuccess === "updated") {
+      setSnackbar({
+        open: true,
+        message: "Client updated successfully!",
+        severity: "success",
+      });
+      dispatch(clearMutateStatus());
+      setTimeout(() => navigate("/clients"), 1200);
+    }
+  }, [lastMutateSuccess]);
+
+  useEffect(() => {
+    if (mutateError) {
+      setSnackbar({ open: true, message: mutateError, severity: "error" });
+      dispatch(clearMutateStatus());
+    }
+  }, [mutateError]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-const handleSubmit = async (e) => {
-  e?.preventDefault();
-  setSaving(true);
+  const handleSubmit = (e) => {
+    e?.preventDefault();
+    dispatch(editClient({ id, data: formData }));
+  };
 
-  try {
-    await updateClient(id, formData);
-
-    setSnackbar({
-      open: true,
-      message: "Client updated successfully!",
-      severity: "success",
-    });
-
-    navigate("/clients");
-
-  } catch (err) {
-    setSnackbar({
-      open: true,
-      message: err.response?.data?.message || "Error updating client",
-      severity: "error",
-    });
-  } finally {
-    setSaving(false);
-  }
-};
-
-  if (loading) return <Box display="flex" justifyContent="center" p={6}><CircularProgress /></Box>;
-  if (error)   return <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>;
+  if (detailLoading)
+    return (
+      <Box display="flex" justifyContent="center" p={6}>
+        <CircularProgress />
+      </Box>
+    );
+  if (detailError)
+    return (
+      <Alert severity="error" sx={{ m: 2 }}>
+        {detailError}
+      </Alert>
+    );
 
   return (
     <Box p={3}>
       <Stack direction="row" spacing={1} mb={2} alignItems="center">
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} size="small">
+        <Button
+          startIcon={<ArrowBackIcon />}
+          onClick={() => navigate(-1)}
+          size="small"
+        >
           Back
         </Button>
-        <Typography variant="h6" fontWeight={600}>Edit Client</Typography>
+        <Typography variant="h6" fontWeight={600}>
+          Edit Client
+        </Typography>
       </Stack>
 
       <Card variant="outlined">
@@ -123,7 +197,7 @@ const handleSubmit = async (e) => {
             values={formData}
             onChange={handleChange}
             onSubmit={handleSubmit}
-            submitText={saving ? "Saving..." : "Update Client"}
+            submitText={mutating ? "Saving..." : "Update Client"}
           />
         </CardContent>
       </Card>
@@ -134,7 +208,11 @@ const handleSubmit = async (e) => {
         onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
-        <Alert severity={snackbar.severity} variant="filled" sx={{ width: "100%" }}>
+        <Alert
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>

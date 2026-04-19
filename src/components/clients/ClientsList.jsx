@@ -1,8 +1,22 @@
-// src/components/clients/ClientsList.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { DataTable, Dialog } from "@/components";
-import { getClients, deleteClient, createClient } from "@/services";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  fetchClients,
+  addClient,
+  removeClient,
+  clearMutateStatus,
+} from "../../store/slices/clientsSlice";
+import {
+  selectClientsList,
+  selectClientsTotalPages,
+  selectClientsTotalItems,
+  selectClientsListLoading,
+  selectMutating,
+  selectMutateError,
+  selectLastMutateSuccess,
+} from "../../store/selectors/clientsSelectors";
+import { DataTable, Dialog, FormGenerator } from "@/components";
 import {
   Chip,
   IconButton,
@@ -24,7 +38,6 @@ import PhoneIcon from "@mui/icons-material/Phone";
 import BusinessIcon from "@mui/icons-material/Business";
 import CircleIcon from "@mui/icons-material/Circle";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
-import { FormGenerator } from "@/components";
 
 const CLIENT_FORM_FIELDS = [
   {
@@ -85,7 +98,7 @@ const CLIENT_FORM_FIELDS = [
       { label: "INACTIVE", value: "INACTIVE" },
     ],
   },
-  { type: "text", name: "location", label: "Location", xs: 12, sm: 12 },
+  { type: "text", name: "location", label: "Location", xs: 12 },
 ];
 
 const EMPTY_FORM = {
@@ -99,72 +112,28 @@ const EMPTY_FORM = {
 };
 
 const ClientsList = () => {
+  const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  // ── Redux state ───────────────────────────────────────────────────────────
+  const clients = useSelector(selectClientsList);
+  const totalPages = useSelector(selectClientsTotalPages);
+  const totalElements = useSelector(selectClientsTotalItems);
+  const listLoading = useSelector(selectClientsListLoading);
+  const mutating = useSelector(selectMutating);
+  const mutateError = useSelector(selectMutateError);
+  const lastMutateSuccess = useSelector(selectLastMutateSuccess);
+
+  // ── Local UI state ────────────────────────────────────────────────────────
   const [tableRefreshKey, setTableRefreshKey] = useState(0);
   const refresh = () => setTableRefreshKey((k) => k + 1);
 
-  // ── Add ──────────────────────────────────────────────────────────────────
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_FORM);
-  const [adding, setAdding] = useState(false);
 
-  const handleAddFormChange = (e) => {
-    const { name, value } = e.target;
-    setAddForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAddSave = async () => {
-    setAdding(true);
-    try {
-      await createClient(addForm);
-      showSnackbar("Client created successfully!", "success");
-      setAddOpen(false);
-      setAddForm(EMPTY_FORM);
-      refresh();
-    } catch (err) {
-      showSnackbar(
-        err.response?.data?.message || "Error creating client",
-        "error",
-      );
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  // ── Delete ────────────────────────────────────────────────────────────────
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
-  const handleDeleteClick = (client) => {
-    setSelectedClient(client);
-    setDeleteOpen(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!selectedClient) return;
-    setDeleting(true);
-    try {
-      await deleteClient(selectedClient.id);
-      showSnackbar(
-        `Client "${selectedClient.clientName}" deleted successfully!`,
-        "success",
-      );
-      setDeleteOpen(false);
-      setSelectedClient(null);
-      refresh();
-    } catch (err) {
-      showSnackbar(
-        err.response?.data?.message || "Error deleting client",
-        "error",
-      );
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  // ── Snackbar ─────────────────────────────────────────────────────────────
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -173,24 +142,72 @@ const ClientsList = () => {
   const showSnackbar = (message, severity) =>
     setSnackbar({ open: true, message, severity });
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
-  const fetchClients = async ({
-    page,
-    size,
-    search,
-    sortField,
-    sortOrder,
-    filters,
-  }) => {
-    const response = await getClients({
-      page,
-      size,
-      search,
-      sortBy: sortField,
-      sortDir: sortOrder,
-      ...filters,
-    });
-    return response.data;
+  // ── React to mutation results ─────────────────────────────────────────────
+  useEffect(() => {
+    if (lastMutateSuccess === "added") {
+      showSnackbar("Client created successfully!", "success");
+      setAddOpen(false);
+      setAddForm(EMPTY_FORM);
+      refresh();
+      dispatch(clearMutateStatus());
+    }
+    if (lastMutateSuccess === "deleted") {
+      showSnackbar(
+        `Client "${selectedClient?.clientName}" deleted successfully!`,
+        "success",
+      );
+      setDeleteOpen(false);
+      setSelectedClient(null);
+      refresh();
+      dispatch(clearMutateStatus());
+    }
+  }, [lastMutateSuccess]);
+
+  useEffect(() => {
+    if (mutateError) {
+      showSnackbar(mutateError, "error");
+      dispatch(clearMutateStatus());
+    }
+  }, [mutateError]);
+
+  // ── DataTable fetch callback ───────────────────────────────────────────────
+  // DataTable calls this with { page, size, search, sortField, sortOrder, filters }
+  const fetchData = useCallback(
+    async ({ page, size, search, sortField, sortOrder, filters }) => {
+      const result = await dispatch(
+        fetchClients({
+          page,
+          size,
+          search,
+          sortBy: sortField,
+          sortDir: sortOrder,
+          ...filters,
+        }),
+      ).unwrap();
+      // DataTable expects { content, totalElements, totalPages } or a plain array
+      return result;
+    },
+    [dispatch],
+  );
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleAddFormChange = (e) => {
+    const { name, value } = e.target;
+    setAddForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddSave = () => {
+    dispatch(addClient(addForm));
+  };
+
+  const handleDeleteClick = (client) => {
+    setSelectedClient(client);
+    setDeleteOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!selectedClient) return;
+    dispatch(removeClient(selectedClient.id));
   };
 
   // ── Columns ───────────────────────────────────────────────────────────────
@@ -241,7 +258,6 @@ const ClientsList = () => {
       filterable: false,
       renderCell: (row) => (
         <div style={{ display: "flex", gap: "8px" }}>
-          {/* GET BY ID — navigate to detail page */}
           <Tooltip title="View Details">
             <IconButton
               size="small"
@@ -251,7 +267,6 @@ const ClientsList = () => {
               <VisibilityIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          {/* EDIT — navigate to edit page */}
           <Tooltip title="Edit">
             <IconButton
               size="small"
@@ -261,7 +276,6 @@ const ClientsList = () => {
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          {/* DELETE */}
           <Tooltip title="Delete">
             <IconButton
               size="small"
@@ -306,7 +320,7 @@ const ClientsList = () => {
         title="Clients List"
         headerIcon={<PeopleAltIcon />}
         columns={columns}
-        fetchData={fetchClients}
+        fetchData={fetchData}
         filtersConfig={filtersConfig}
         onAdd={() => {
           setAddForm(EMPTY_FORM);
@@ -325,14 +339,14 @@ const ClientsList = () => {
         onSubmit={handleAddSave}
         submitText="Create Client"
         cancelText="Cancel"
-        loading={adding}
+        loading={mutating}
       >
         <FormGenerator
           fields={CLIENT_FORM_FIELDS}
           values={addForm}
           onChange={handleAddFormChange}
           hideSubmit
-          showSubmit={false} 
+          showSubmit={false}
         />
       </Dialog>
 
@@ -360,7 +374,7 @@ const ClientsList = () => {
               setDeleteOpen(false);
               setSelectedClient(null);
             }}
-            disabled={deleting}
+            disabled={mutating}
           >
             Cancel
           </Button>
@@ -368,9 +382,9 @@ const ClientsList = () => {
             onClick={handleConfirmDelete}
             color="error"
             variant="contained"
-            disabled={deleting}
+            disabled={mutating}
           >
-            {deleting ? "Deleting..." : "Delete"}
+            {mutating ? "Deleting..." : "Delete"}
           </Button>
         </DialogActions>
       </Dialog>
